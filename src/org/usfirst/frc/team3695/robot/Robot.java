@@ -2,24 +2,32 @@
 package org.usfirst.frc.team3695.robot;
 
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.I2C;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.command.Scheduler;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-
 import org.usfirst.frc.team3695.robot.auto.CommandGroupAuto;
-import org.usfirst.frc.team3695.robot.enumeration.Autonomous;
-import org.usfirst.frc.team3695.robot.enumeration.Position;
+import org.usfirst.frc.team3695.robot.enumeration.Bot;
 import org.usfirst.frc.team3695.robot.enumeration.Drivetrain;
 import org.usfirst.frc.team3695.robot.enumeration.Goal;
+import org.usfirst.frc.team3695.robot.enumeration.Position;
 import org.usfirst.frc.team3695.robot.subsystems.*;
+import org.usfirst.frc.team3695.robot.util.Util;
+
+//    _____   _____   ____     ______           ______                   _                                        ____             _                   
+//   |__  /  / ___/  / __ \   / ____/          / ____/  ____    _  __   (_)   ____ ___   __  __   _____          / __ \   _____   (_)   ____ ___   ___ 
+//    /_ <  / __ \  / /_/ /  /___ \           / /_     / __ \  | |/_/  / /   / __ `__ \ / / / /  / ___/         / /_/ /  / ___/  / /   / __ `__ \ / _ \
+//  ___/ / / /_/ /  \__, /  ____/ /          / __/    / /_/ / _>  <   / /   / / / / / // /_/ /  (__  )         / ____/  / /     / /   / / / / / //  __/
+// /____/  \____/  /____/  /_____/          /_/       \____/ /_/|_|  /_/   /_/ /_/ /_/ \__,_/  /____/         /_/      /_/     /_/   /_/ /_/ /_/ \___/ 
 
 /** the magic place where everything happens (where the sequence of events is controlled, top of the hierarchy) */
 public class Robot extends IterativeRobot {
 
+		public static Bot bot;
+	
 	/// choosers
+		SendableChooser<Bot> botChooser;
 		SendableChooser<Goal> goalChooser;
 		SendableChooser<Drivetrain> driveChooser;
 		SendableChooser<Position>  positionChooser;
@@ -41,12 +49,21 @@ public class Robot extends IterativeRobot {
 		
 	/// autonomous
 		private CommandGroupAuto auto;
-		
-		
-		
-		
+
 	/** runs when robot is turned on */
 	public void robotInit() {
+		/// instantiate bot chooser
+		botChooser = new SendableChooser<>();
+		botChooser.addDefault(Bot.SWISS.toString(), Bot.SWISS);
+		botChooser.addObject(Bot.OOF.toString(), Bot.OOF);
+		SmartDashboard.putData("Bot", botChooser);
+
+		if (botChooser.getSelected() != null){
+			bot = botChooser.getSelected();
+		} else {
+			bot = Bot.OOF;
+		}
+
 			DriverStation.reportWarning("ROBOT STARTED; GOOD LUCK", false);
 		/// instantiate subsystems
 //			SUB_ARDUINO = new SubsystemArduino();
@@ -54,13 +71,16 @@ public class Robot extends IterativeRobot {
 			SUB_CLAMP = new SubsystemClamp();
 			SUB_COMPRESSOR = new SubsystemCompressor();
 			SUB_DRIVE = new SubsystemDrive();
+			
+			SUB_DRIVE.setPIDF(.5, 0, 0, 0);
+			
 			SUB_HOOK = new SubsystemHook();
 			SUB_MAST = new SubsystemMast();
-			//vision = new Vision();
+			vision = new Vision();
 
 		/// instantiate operator interface
 			oi = new OI();
-		
+
 		/// instantiate drivetrain chooser
 			driveChooser = new SendableChooser<>();
 			driveChooser.addDefault(Drivetrain.ROCKET_LEAGUE.toString(), Drivetrain.ROCKET_LEAGUE); // set default to RL drive
@@ -82,10 +102,18 @@ public class Robot extends IterativeRobot {
 				goalChooser.addObject(Goal.values()[i].toString(), Goal.values()[i]); } // add each autonomous enum value to chooser
 			SmartDashboard.putData("Goal", goalChooser); //display the chooser on the dash
 			
-		/// instantiate cameras
-			// vision.startCameraThread();
+		/// instantiate bot chooser
+			botChooser = new SendableChooser<>();
+			botChooser.addDefault(Bot.SWISS.toString(), Bot.SWISS);
+				botChooser.addObject(Bot.OOF.toString(), Bot.OOF); 
+			SmartDashboard.putData("Bot", botChooser);
 			
-			DriverStation.reportWarning("SUBSYSTEMS, CHOOSERS INSTANTIATED", false);
+		/// instantiate cameras
+			vision.startScrewCameraThread();
+			vision.startFrameCameraThread();
+
+		SmartDashboard.putData("Sub_Drive", SUB_DRIVE);
+		DriverStation.reportWarning("SUBSYSTEMS, CHOOSERS INSTANTIATED", false);
 	}
 
 	
@@ -112,7 +140,13 @@ public class Robot extends IterativeRobot {
 
 	/** runs at 50hz when in autonomous */
 	public void autonomousPeriodic() {
+		Robot.SUB_DRIVE.setPIDF(Util.getAndSetDouble("P", .5),
+								Util.getAndSetDouble("I", 0),
+								Util.getAndSetDouble("D", 0),
+								Util.getAndSetDouble("F", 0));
+		
 		Scheduler.getInstance().run(); 
+		bot = botChooser.getSelected(); // update motor inverts
 	}
 
 	
@@ -126,11 +160,18 @@ public class Robot extends IterativeRobot {
 	
 	/** runs at ~50hz when in teleop mode */
 	public void teleopPeriodic() {
+		Robot.SUB_DRIVE.setPIDF(Util.getAndSetDouble("P", .5),
+								Util.getAndSetDouble("I", 0),
+								Util.getAndSetDouble("D", 0),
+								Util.getAndSetDouble("F", 0));
+		
 		Scheduler.getInstance().run();
 		if (driveChooser.getSelected() != null) {
 			SUB_DRIVE.setDrivetrain(driveChooser.getSelected());
 		}
-		SUB_MANIPULATOR.spinByJoystick(OI.OPERATOR); // THIS IS A PATCH. DO AS I SAY, NOT AS I DO
+		if (botChooser.getSelected() != null){
+			bot = botChooser.getSelected();
+		}
 	}
 
 	
